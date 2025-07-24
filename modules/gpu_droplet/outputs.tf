@@ -70,12 +70,26 @@ output "model_storage_info" {
       manage_ollama = "/root/manage_ollama_models.sh"
       manage_localai = "/root/manage_localai_models.sh"
     }
+    warning = null
   } : {
     volume_enabled = false
-    warning = "No volume attached - models will be stored on root filesystem"
-    ollama_models_path = "/usr/share/ollama/.ollama/models" 
+    mount_point = "N/A"
+    ollama_models_path = "/usr/share/ollama/.ollama/models"
     localai_models_path = "/opt/localai/models"
+    shared_models_path = "N/A"
+    volume_size_gb = 0
+    filesystem = "N/A"
     protection_enabled = false
+    destruction_allowed = true
+    snapshot_on_destroy = false
+    management_commands = {
+      check_storage = "df -h /"
+      list_ollama_models = "ls -la /usr/share/ollama/.ollama/models/ || echo 'No models found'"
+      list_localai_models = "ls -la /opt/localai/models/ || echo 'No models found'"
+      manage_ollama = "echo 'No volume management script available'"
+      manage_localai = "echo 'No volume management script available'"
+    }
+    warning = "No volume attached - models will be stored on root filesystem"
   }
 }
 
@@ -84,41 +98,56 @@ output "firewall_id" {
   value       = var.enable_firewall ? try(digitalocean_firewall.gpu_firewall[0].id, null) : null
 }
 
+output "project_assignment_info" {
+  description = "Project assignment information for debugging"
+  value = {
+    project_name_configured = var.project_name
+    project_assignment_enabled = var.enabled && var.project_name != ""
+    project_id = var.project_name != "" ? try(data.digitalocean_project.target_project[0].id, "Project not found") : "No project configured"
+    assignment_status = var.project_name != "" ? "Configured" : "Disabled - no project name set"
+    resources_assigned = var.project_name != "" ? length(compact([
+      digitalocean_droplet.gpu[0].urn,
+      var.enable_floating_ip ? try(digitalocean_floating_ip.gpu_ip[0].urn, null) : null,
+      var.volume_size_gb > 0 ? try(digitalocean_volume.gpu_volume[0].urn, null) : null
+    ])) : 0
+  }
+}
+
 output "cost_estimate" {
   description = "Comprehensive cost information for the GPU droplet across all time periods"
   value = {
     # Total costs across all time periods
-    hourly_total   = local.total_hourly_cost
-    daily_total    = local.total_daily_cost
-    monthly_total  = local.total_monthly_cost
+    hourly_total   = format("%.2f", local.total_hourly_cost)
+    daily_total    = format("%.2f", local.total_daily_cost)
+    monthly_total  = format("%.2f", local.total_monthly_cost)
     
     # Detailed breakdown by component and time period
     breakdown = {
       gpu_droplet = {
-        hourly  = local.gpu_hourly_cost
-        daily   = local.gpu_daily_cost
-        monthly = local.gpu_monthly_cost
+        hourly  = format("%.2f", local.gpu_hourly_cost)
+        daily   = format("%.2f", local.gpu_daily_cost)
+        monthly = format("%.2f", local.gpu_monthly_cost)
       }
       floating_ip = {
-        hourly  = local.floating_ip_hourly_cost
-        daily   = local.floating_ip_daily_cost
-        monthly = local.floating_ip_monthly_cost
+        hourly  = format("%.2f", local.floating_ip_hourly_cost)
+        daily   = format("%.2f", local.floating_ip_daily_cost)
+        monthly = format("%.2f", local.floating_ip_monthly_cost)
       }
       backups = {
-        hourly  = local.backup_hourly_cost
-        daily   = local.backup_daily_cost
-        monthly = local.backup_monthly_cost
+        hourly  = format("%.2f", local.backup_hourly_cost)
+        daily   = format("%.2f", local.backup_daily_cost)
+        monthly = format("%.2f", local.backup_monthly_cost)
       }
       storage = {
-        hourly  = local.volume_hourly_cost
-        daily   = local.volume_daily_cost
-        monthly = local.volume_monthly_cost
+        hourly  = format("%.2f", local.volume_hourly_cost)
+        daily   = format("%.2f", local.volume_daily_cost)
+        monthly = format("%.2f", local.volume_monthly_cost)
       }
     }
     
     # Legacy fields for backward compatibility
-    hourly_rate      = local.total_hourly_cost
-    monthly_estimate = local.total_monthly_cost
+    hourly_rate      = format("%.2f", local.total_hourly_cost)
+    monthly_estimate = format("%.2f", local.total_monthly_cost)
   }
 }
 
@@ -151,7 +180,7 @@ output "gpu_efficiency_analysis" {
           gpu_size = gpu_size
           model = local.available_gpu_specs[gpu_size].gpu_model
           efficiency = ranking.description
-          hourly_cost = "$${format("%.2f", local.available_gpu_specs[gpu_size].hourly)}/hour"
+          hourly_cost = "${format("%.2f", local.available_gpu_specs[gpu_size].hourly)}/hour"
         }
         if ranking.rank == 1
       ][0], null)
@@ -162,7 +191,7 @@ output "gpu_efficiency_analysis" {
           gpu_size = gpu_size
           model = local.available_gpu_specs[gpu_size].gpu_model
           efficiency = ranking.description
-          hourly_cost = "$${format("%.2f", local.available_gpu_specs[gpu_size].hourly)}/hour"
+          hourly_cost = "${format("%.2f", local.available_gpu_specs[gpu_size].hourly)}/hour"
         }
         if ranking.rank == 1
       ][0], null)
@@ -184,7 +213,7 @@ output "gpu_efficiency_analysis" {
           gpu_size = gpu_size
           model = local.available_gpu_specs[gpu_size].gpu_model
           performance = ranking.description
-          hourly_cost = "$${format("%.2f", local.available_gpu_specs[gpu_size].hourly)}/hour"
+          hourly_cost = "${format("%.2f", local.available_gpu_specs[gpu_size].hourly)}/hour"
         }
         if ranking.rank == 1
       ][0], null)
@@ -282,8 +311,8 @@ output "snapshot_management_commands" {
 output "volume_protection_info" {
   description = "Volume protection and lifecycle management information"
   value = var.volume_size_gb > 0 ? {
-    volume_id = digitalocean_volume.gpu_volume[0].id
-    volume_name = digitalocean_volume.gpu_volume[0].name
+    volume_id = try(digitalocean_volume.gpu_volume[0].id, "")
+    volume_name = try(digitalocean_volume.gpu_volume[0].name, "")
     protection_status = {
       enabled = var.protect_volume
       destruction_allowed = var.allow_volume_destruction
@@ -302,13 +331,35 @@ output "volume_protection_info" {
       restore_from_snapshot = "doctl compute volume create restored-volume --size ${var.volume_size_gb} --region ${var.region} --snapshot <snapshot-id>"
     }
     cost_info = {
-      volume_monthly_cost = "$${format("%.2f", var.volume_size_gb * 0.10)}"
+      volume_monthly_cost = "${format("%.2f", var.volume_size_gb * 0.10)}"
       snapshot_storage_cost = "$0.05/GB/month for volume snapshots"
       protection_value = "Prevents loss of potentially $1000s in AI model downloads and training"
     }
   } : {
-    volume_attached = false
-    protection_status = "No volume to protect"
+    volume_id = ""
+    volume_name = ""
+    protection_status = {
+      enabled = false
+      destruction_allowed = true
+      will_survive_destroy = false
+      snapshot_on_destroy = false
+    }
+    data_safety = {
+      ai_models_protected = false
+      backup_strategy = "No volume attached"
+      risk_level = "N/A - No volume to protect"
+    }
+    management_commands = {
+      list_volumes = "doctl compute volume list"
+      create_volume_snapshot = "No volume to snapshot"
+      list_volume_snapshots = "doctl compute volume-snapshot list"
+      restore_from_snapshot = "No volume to restore"
+    }
+    cost_info = {
+      volume_monthly_cost = "0.00"
+      snapshot_storage_cost = "N/A - No volume attached"
+      protection_value = "N/A - No volume to protect"
+    }
   }
 }
 
@@ -335,7 +386,7 @@ output "storage_summary" {
       ollama = var.install_ollama ? (var.volume_size_gb > 0 ? "/mnt/ai-models/ollama/models" : "System default") : "Not installed"
       localai = var.install_localai ? (var.volume_size_gb > 0 ? "/mnt/ai-models/localai/models" : "System default") : "Not installed"
     }
-    estimated_monthly_cost = var.volume_size_gb > 0 ? "$${format("%.2f", var.volume_size_gb * 0.10)}" : "$0.00"
+    estimated_monthly_cost = var.volume_size_gb > 0 ? "${format("%.2f", var.volume_size_gb * 0.10)}" : "0.00"
   }
 }
 
@@ -353,7 +404,7 @@ output "volume_snapshot_config" {
   value = var.create_volume_snapshot_on_destroy && var.volume_size_gb > 0 ? {
     enabled = true
     snapshot_name = var.volume_snapshot_name != "" ? var.volume_snapshot_name : "${var.name}-volume-snapshot-[timestamp]"
-    volume_id = digitalocean_volume.gpu_volume[0].id
+    volume_id = try(digitalocean_volume.gpu_volume[0].id, "")
     snapshot_directory = "${path.root}/volume-snapshots"
     requirements = {
       doctl_installed = "Required for volume snapshot creation"
@@ -366,41 +417,27 @@ output "volume_snapshot_config" {
     }
   } : {
     enabled = false
-    reason = var.volume_size_gb == 0 ? "No volume attached" : "Volume snapshot on destroy not enabled"
+    snapshot_name = ""
+    volume_id = ""
+    snapshot_directory = ""
+    requirements = {
+      doctl_installed = "Not required - snapshots disabled"
+      doctl_authenticated = "Not required - snapshots disabled"
+    }
+    restore_commands = {
+      list_snapshots = "doctl compute volume-snapshot list"
+      create_volume_from_snapshot = "Snapshots not enabled"
+      attach_to_droplet = "Snapshots not enabled"
+    }
   }
 }
 
 output "account_ssh_keys" {
   description = "SSH keys available in your DigitalOcean account (when auto-import is enabled)"
-  value = var.auto_import_ssh_keys && length(var.ssh_key_ids) == 0 ? {
-    all_keys = try([
-      for key in data.digitalocean_ssh_keys.account_keys[0].ssh_keys : {
-        id = key.id
-        name = key.name
-        fingerprint = key.fingerprint
-        public_key_preview = "${substr(key.public_key, 0, 50)}..."
-      }
-    ], [])
-    selected_keys = length(var.ssh_key_names) > 0 ? [
-      for key in data.digitalocean_ssh_key.named_keys : {
-        id = key.id
-        name = key.name
-        fingerprint = key.fingerprint
-        public_key_preview = "${substr(key.public_key, 0, 50)}..."
-      }
-    ] : try([
-      for key in data.digitalocean_ssh_keys.account_keys[0].ssh_keys : {
-        id = key.id
-        name = key.name
-        fingerprint = key.fingerprint
-        public_key_preview = "${substr(key.public_key, 0, 50)}..."
-      }
-    ], [])
-    total_keys_in_account = try(length(data.digitalocean_ssh_keys.account_keys[0].ssh_keys), 0)
+  value = {
+    auto_import_enabled = var.auto_import_ssh_keys
     keys_used_for_droplet = length(local.final_ssh_key_ids)
-  } : {
-    auto_import_disabled = true
-    message = "Enable auto_import_ssh_keys = true to see account SSH keys"
+    message = var.auto_import_ssh_keys ? "SSH key auto-import is enabled" : "SSH key auto-import is disabled"
   }
 }
 

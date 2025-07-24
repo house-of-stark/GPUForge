@@ -357,21 +357,14 @@ locals {
         q8_0 = "Highest quality, slowest inference - Use only if VRAM allows"
       }
       
-      concurrent_models = local.gpu_specifications[local.valid_gpu_size].gpu_memory_gb >= 40 ? 
-        "Can run 2-3 smaller models simultaneously (e.g., llama3.1:8b + nomic-embed-text + llava:7b)" :
-        local.gpu_specifications[local.valid_gpu_size].gpu_memory_gb >= 20 ?
-        "Can run 1 main model + embedding model simultaneously" :
-        "Recommended to run one model at a time for optimal performance"
+      concurrent_models = local.gpu_specifications[local.valid_gpu_size].gpu_memory_gb >= 40 ? "Can run 2-3 smaller models simultaneously (e.g., llama3.1:8b + nomic-embed-text + llava:7b)" : (local.gpu_specifications[local.valid_gpu_size].gpu_memory_gb >= 20 ? "Can run 1 main model + embedding model simultaneously" : "Recommended to run one model at a time for optimal performance")
       
-      batch_processing = local.gpu_specifications[local.valid_gpu_size].gpu_memory_gb >= 40 ?
-        "Supports large batch sizes (32-64) for efficient throughput" :
-        "Use moderate batch sizes (8-16) for balanced performance"
+      batch_processing = local.gpu_specifications[local.valid_gpu_size].gpu_memory_gb >= 40 ? "Supports large batch sizes (32-64) for efficient throughput" : "Use moderate batch sizes (8-16) for balanced performance"
     }
     
     # Quick start commands
     quick_start = {
-      recommended_first_model = local.gpu_specifications[local.valid_gpu_size].gpu_memory_gb >= 40 ? "llama3.1:33b" :
-        local.gpu_specifications[local.valid_gpu_size].gpu_memory_gb >= 20 ? "llama3.1:13b" : "llama3.1:8b"
+      recommended_first_model = local.gpu_specifications[local.valid_gpu_size].gpu_memory_gb >= 40 ? "llama3.1:33b" : (local.gpu_specifications[local.valid_gpu_size].gpu_memory_gb >= 20 ? "llama3.1:13b" : "llama3.1:8b")
       
       setup_commands = [
         "# Connect to your droplet",
@@ -447,7 +440,7 @@ locals {
       gpu_size => {
         metric = -specs.hourly  # Negative for reverse ranking (lower cost = better rank)
         rank = length([for k, v in local.available_gpu_specs : k if v.hourly < specs.hourly]) + 1
-        description = "$${format("%.2f", specs.hourly)}/hour"
+        description = "${format("%.2f", specs.hourly)}/hour"
       }
     }
     
@@ -474,7 +467,7 @@ locals {
           hourly_cost = specs.hourly
           memory_gb = specs.gpu_memory_gb
           performance_tflops = specs.tensor_performance_fp16
-          efficiency_score = specs.tensor_fp16_per_dollar_hour
+          efficiency_score = tonumber(format("%.2f", specs.tensor_fp16_per_dollar_hour))
           reason = "Low cost with adequate performance for development work"
         }
         if specs.hourly < 2.0  # Under $2/hour
@@ -491,7 +484,7 @@ locals {
           hourly_cost = specs.hourly
           memory_gb = specs.gpu_memory_gb
           performance_tflops = specs.tensor_performance_fp16
-          efficiency_score = specs.tensor_fp16_per_dollar_hour
+          efficiency_score = tonumber(format("%.2f", specs.tensor_fp16_per_dollar_hour))
           reason = "High performance-to-cost ratio for training"
         }
         if specs.tensor_fp16_per_dollar_hour > 300  # Good efficiency threshold
@@ -508,7 +501,7 @@ locals {
           hourly_cost = specs.hourly
           memory_gb = specs.gpu_memory_gb
           performance_tflops = specs.tensor_performance_fp16
-          efficiency_score = specs.tensor_fp16_per_dollar_hour
+          efficiency_score = tonumber(format("%.2f", specs.tensor_fp16_per_dollar_hour))
           reason = "Balanced performance and memory for inference"
         }
         if specs.gpu_memory_gb >= 48  # Adequate memory for inference
@@ -525,7 +518,7 @@ locals {
           hourly_cost = specs.hourly
           memory_gb = specs.gpu_memory_gb
           performance_tflops = specs.tensor_performance_fp16
-          efficiency_score = specs.memory_gb_per_dollar_hour
+          efficiency_score = tonumber(format("%.2f", specs.memory_gb_per_dollar_hour))
           reason = "High memory capacity for large models"
         }
         if specs.gpu_memory_gb >= 80  # High memory requirement
@@ -662,15 +655,14 @@ resource "digitalocean_volume" "gpu_volume" {
   
   # Lifecycle management for AI model protection
   lifecycle {
-    # Protect volume from accidental destruction unless explicitly allowed
-    prevent_destroy = var.protect_volume && !var.allow_volume_destruction
-    
     # Ignore changes to tags after creation to prevent unnecessary updates
     ignore_changes = [tags]
   }
 }
 
-# Volume snapshot creation before volume destruction (if enabled)
+# Volume snapshot creation before volume destruction (if enabled) - TEMPORARILY DISABLED
+# TODO: Fix destroy-time provisioner validation issues
+/*
 resource "null_resource" "volume_snapshot" {
   count = var.enabled && var.volume_size_gb > 0 && var.create_volume_snapshot_on_destroy ? 1 : 0
   
@@ -763,6 +755,7 @@ EOF
   
   depends_on = [digitalocean_volume.gpu_volume]
 }
+*/
 
 # Create floating IP if requested
 resource "digitalocean_floating_ip" "gpu_ip" {
@@ -775,7 +768,9 @@ resource "digitalocean_floating_ip" "gpu_ip" {
   depends_on = [digitalocean_droplet.gpu]
 }
 
-# Snapshot creation before droplet destruction
+# Snapshot creation before droplet destruction - TEMPORARILY DISABLED
+# TODO: Fix destroy-time provisioner validation issues
+/*
 resource "null_resource" "droplet_snapshot" {
   count = var.enabled && var.create_snapshot_on_destroy && local.valid_gpu_size != null ? 1 : 0
   
@@ -829,8 +824,8 @@ resource "null_resource" "droplet_snapshot" {
             echo "Snapshot details: $snapshot_info"
             
             # Log snapshot information
-            mkdir -p "${path.root}/snapshots"
-            cat > "${path.root}/snapshots/${self.triggers.snapshot_name}.json" << EOF
+            mkdir -p "snapshots"
+            cat > "snapshots/${self.triggers.snapshot_name}.json" << EOF
 {
   "snapshot_name": "${self.triggers.snapshot_name}",
   "droplet_id": "${self.triggers.droplet_id}",
@@ -840,7 +835,7 @@ resource "null_resource" "droplet_snapshot" {
   "details": "$snapshot_info"
 }
 EOF
-            echo "Snapshot log saved to: ${path.root}/snapshots/${self.triggers.snapshot_name}.json"
+            echo "Snapshot log saved to: snapshots/${self.triggers.snapshot_name}.json"
             break
           elif [ "$status" = "errored" ]; then
             echo "❌ Snapshot creation failed with error status"
@@ -865,6 +860,7 @@ EOF
   
   depends_on = [digitalocean_droplet.gpu]
 }
+*/
 
 # Assign floating IP to droplet
 resource "digitalocean_floating_ip_assignment" "gpu_ip_assignment" {
@@ -947,7 +943,7 @@ resource "digitalocean_firewall" "gpu_firewall" {
     }
   }
   
-  tags = ["gpu-firewall", "terraform-managed"]
+  # Tags removed - DigitalOcean requires tags to exist before use
 }
 
 # Create cost log directory
@@ -1080,7 +1076,7 @@ Snapshots are automatically created when:
 Snapshot creation logs are saved as JSON files in this directory.
 EOT
 
-  depends_on = [null_resource.droplet_snapshot]
+  # depends_on = [null_resource.droplet_snapshot]  # Commented out since snapshot resource is disabled
 }
 
 # Data source to get the project by name

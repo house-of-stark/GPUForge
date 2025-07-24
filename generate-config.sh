@@ -1,36 +1,35 @@
 #!/bin/bash
 
-# 🔥 GPUForge Configuration Generator - Forge Your Perfect AI Infrastructure!
-# Transform your AI dreams into optimized, production-ready Terraform configurations
+# GPUForge Configuration Generator - Fixed Version
+# Creates subdirectories for each configuration to prevent conflicts
 
 set -e
 
-echo "🔥 GPUForge Configuration Generator"
-echo "===================================="
+echo "🔥 GPUForge Configuration Generator (Fixed)"
+echo "============================================"
 echo "⚡ Welcome to GPUForge! Let's forge your perfect AI infrastructure together."
-echo "🧠 This intelligent generator analyzes your needs and creates optimized configurations"
-echo "💡 that maximize performance while minimizing costs. Let's get started!"
+echo "🧠 This intelligent generator creates isolated configurations in subdirectories."
+echo "💡 No more file conflicts - each config gets its own directory!"
 
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # Configuration directory
 CONFIG_DIR="generated-configs"
-TEMPLATES_DIR="templates"
 
 echo -e "${BLUE}🚀 GPUForge Configuration Generator${NC}"
 echo -e "${BLUE}=====================================${NC}"
 echo
 
-# Create directories if they don't exist
+# Create base directory if it doesn't exist
 mkdir -p "$CONFIG_DIR"
-mkdir -p "$TEMPLATES_DIR"
 
-# Function to display GPU options with cost analysis
+# Function to display GPU options
 show_gpu_options() {
     echo -e "${YELLOW}Available GPU Options:${NC}"
     echo
@@ -49,7 +48,7 @@ show_gpu_options() {
 
 # Function to get user requirements
 get_requirements() {
-    echo -e "${YELLOW}What's your primary use case?${NC}"
+    echo "What's your primary use case?"
     echo "1) AI Development & Testing"
     echo "2) Model Training"
     echo "3) Production Inference Server"
@@ -57,22 +56,22 @@ get_requirements() {
     echo "5) Research & Experimentation"
     echo
     read -p "Select use case (1-5): " use_case
-
+    
     echo
-    echo -e "${YELLOW}What's your budget preference?${NC}"
+    echo "What's your budget preference?"
     echo "1) Budget-conscious (<$50/day)"
     echo "2) Balanced ($50-100/day)"
     echo "3) Performance-focused ($100-200/day)"
     echo "4) No budget constraints"
     echo
     read -p "Select budget (1-4): " budget
-
+    
     echo
     show_gpu_options
     read -p "Select GPU option (1-5): " gpu_choice
-
+    
     echo
-    echo -e "${YELLOW}Additional features:${NC}"
+    echo "Additional features:"
     read -p "Enable Ollama? (y/n) [y]: " enable_ollama
     enable_ollama=${enable_ollama:-y}
     
@@ -84,16 +83,24 @@ get_requirements() {
     
     read -p "Enable floating IP? (y/n) [n]: " enable_floating_ip
     enable_floating_ip=${enable_floating_ip:-n}
-
+    
     echo
     read -p "Configuration name: " config_name
-    config_name=${config_name:-"gpu-droplet-$(date +%Y%m%d)"}
+    config_name=${config_name:-"gpu-droplet-$(date +%Y%m%d-%H%M)"}
 }
 
-# Function to generate configuration
+# Function to generate configuration - FIXED VERSION
 generate_config() {
-    local config_file="$CONFIG_DIR/${config_name}.tf"
-    local vars_file="$CONFIG_DIR/${config_name}.tfvars"
+    # Create individual directory for this configuration
+    local config_dir="$CONFIG_DIR/${config_name}"
+    local config_file="$config_dir/main.tf"
+    local vars_file="$config_dir/terraform.tfvars"
+    local variables_file="$config_dir/variables.tf"
+    
+    echo -e "${BLUE}Creating configuration directory: $config_dir${NC}"
+    
+    # Create the configuration directory
+    mkdir -p "$config_dir"
     
     # Map GPU choices to actual sizes
     case $gpu_choice in
@@ -127,7 +134,7 @@ provider "digitalocean" {
 
 # GPU Droplet Module
 module "gpu_droplet" {
-  source = "./modules/gpu_droplet"
+  source = "../../modules/gpu_droplet"
   
   # Basic Configuration
   name     = var.droplet_name
@@ -158,20 +165,18 @@ module "gpu_droplet" {
 output "droplet_info" {
   description = "Essential droplet information"
   value = {
+    droplet_id    = module.gpu_droplet.droplet_id
     ip_address    = module.gpu_droplet.droplet_ipv4
+    ssh_command   = module.gpu_droplet.ssh_connection_info.ssh_command
     floating_ip   = module.gpu_droplet.floating_ip
-    ssh_command   = module.gpu_droplet.ssh_connection_info != null ? module.gpu_droplet.ssh_connection_info.ssh_command : null
-    gpu_specs     = module.gpu_droplet.gpu_efficiency_analysis.performance_metrics
   }
 }
 
 output "cost_analysis" {
   description = "Cost breakdown and efficiency analysis"
   value = {
-    hourly_cost   = module.gpu_droplet.cost_tracking.total_hourly_cost
-    daily_cost    = module.gpu_droplet.cost_tracking.total_daily_cost
-    monthly_cost  = module.gpu_droplet.cost_tracking.total_monthly_cost
-    efficiency    = module.gpu_droplet.gpu_efficiency_analysis.efficiency_rankings
+    cost_estimate = module.gpu_droplet.cost_estimate
+    efficiency    = module.gpu_droplet.gpu_efficiency_analysis
   }
 }
 
@@ -186,7 +191,6 @@ output "model_recommendations" {
 output "management_commands" {
   description = "Commands for managing your droplet and models"
   value = {
-    ssh_connection = module.gpu_droplet.ssh_connection_info
     ollama_management = module.gpu_droplet.ollama_management_commands
     volume_management = module.gpu_droplet.volume_management_commands
   }
@@ -199,16 +203,15 @@ EOF
 # Use case: $(get_use_case_name)
 # Generated: $(date)
 
-# Basic Configuration
 droplet_name = "$config_name"
-region       = "nyc2"  # Change as needed
-gpu_size     = "$gpu_size"
+region = "nyc2"
+gpu_size = "$gpu_size"
 
 # SSH Configuration
-ssh_private_key_path = "~/.ssh/id_rsa"  # Update path as needed
+ssh_private_key_path = "~/.ssh/id_rsa"
 
 # AI Services
-enable_ollama  = $([ "$enable_ollama" = "y" ] && echo "true" || echo "false")
+enable_ollama = $([ "$enable_ollama" = "y" ] && echo "true" || echo "false")
 enable_localai = $([ "$enable_localai" = "y" ] && echo "true" || echo "false")
 
 # Storage Configuration
@@ -219,10 +222,12 @@ enable_volume_protection = $([ "$enable_protection" = "y" ] && echo "true" || ec
 enable_floating_ip = $([ "$enable_floating_ip" = "y" ] && echo "true" || echo "false")
 EOF
 
-    # Generate variables.tf for the configuration
-    cat > "$CONFIG_DIR/variables.tf" << 'EOF'
+    # Generate variables definitions
+    cat > "$variables_file" << 'EOF'
+# Variable definitions for GPU droplet configuration
+
 variable "droplet_name" {
-  description = "Name for the GPU droplet"
+  description = "Name of the GPU droplet"
   type        = string
 }
 
@@ -279,18 +284,32 @@ EOF
     echo -e "${YELLOW}Files created:${NC}"
     echo "  📄 $config_file"
     echo "  📄 $vars_file"
-    echo "  📄 $CONFIG_DIR/variables.tf"
+    echo "  📄 $variables_file"
     echo
-    echo -e "${YELLOW}Next steps:${NC}"
-    echo "  1. Review and customize the generated configuration"
-    echo "  2. 🔑 Set your DigitalOcean token: export DIGITALOCEAN_TOKEN=your_token"
-    echo "  3. 🏗️ Initialize and forge: terraform init && terraform apply"
-    echo "  4. 🚀 Connect via SSH using the provided connection command"
-    echo "  5. 🤖 Start building AI magic with your optimized model recommendations!"
+    echo -e "${BLUE}📁 Configuration Directory: $config_dir${NC}"
     echo
-    echo "🎉 Welcome to GPUForge - Your AI Infrastructure is Forged and Ready!"
-    echo "🔥 Ready to transform your AI dreams into reality? Run 'terraform apply' to forge your infrastructure!"
-    echo "  • Volume protection and snapshot options"
+    echo -e "${RED}⚠️  IMPORTANT WORKFLOW:${NC}"
+    echo -e "${YELLOW}Next steps (run these commands in order):${NC}"
+    echo
+    echo -e "${CYAN}  # 1. Move to your generated configuration directory${NC}"
+    echo "  cd $config_dir"
+    echo
+    echo -e "${CYAN}  # 2. Set your DigitalOcean token${NC}"
+    echo "  export DIGITALOCEAN_TOKEN=your_token_here"
+    echo
+    echo -e "${CYAN}  # 3. Initialize and deploy your GPU droplet${NC}"
+    echo "  terraform init"
+    echo "  terraform plan"
+    echo "  terraform apply"
+    echo
+    echo -e "${CYAN}  # 4. Connect to your droplet (after deployment)${NC}"
+    echo "  # SSH command will be shown in terraform output"
+    echo
+    echo -e "${RED}⚠️  Remember: Always run terraform commands from inside the generated config directory!${NC}"
+    echo -e "${RED}   Do NOT run terraform from the GPUForge root directory.${NC}"
+    echo
+    echo "🎉 Welcome to GPUForge - Your AI Infrastructure is Ready to Forge!"
+    echo "🔥 Ready to transform your AI dreams into reality? Follow the steps above!"
 }
 
 # Helper functions

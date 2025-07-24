@@ -27,10 +27,10 @@ variable "gpu_size" {
   
   validation {
     condition = contains([
-      "gpu-h100x1-80gb", "gpu-h100x8-640gb", 
-      "gpu-a100x1-80gb", "gpu-a100x8-640gb"
+      "gpu-rtx4000x1-20gb", "gpu-rtx6000ada-48gb", "gpu-a40x1-48gb",
+      "gpu-h100x1-80gb", "gpu-h100x8-640gb", "gpu-a100x1-80gb", "gpu-a100x8-640gb"
     ], var.gpu_size)
-    error_message = "Invalid GPU size. Must be one of: gpu-h100x1-80gb, gpu-h100x8-640gb, gpu-a100x1-80gb, gpu-a100x8-640gb"
+    error_message = "Invalid GPU size. Must be one of: gpu-rtx4000x1-20gb, gpu-rtx6000ada-48gb, gpu-a40x1-48gb, gpu-h100x1-80gb, gpu-h100x8-640gb, gpu-a100x1-80gb, gpu-a100x8-640gb"
   }
 }
 
